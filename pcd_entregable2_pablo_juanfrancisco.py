@@ -63,9 +63,14 @@ class TemperatureSensor(Observable):
     async def simulate_temperature_reading(self):
         while True:
             timestamp = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')  # Obtener la marca de tiempo actual
-            t = 20 + (random.random() * 15)  # Simular la lectura de temperatura
-            data = (timestamp, round(t,2))  # Crear una tupla (timestamp, temperatura)
-            self.notify_observers(data)  # Notificar a los observadores con los datos
+            try:
+                t = 20 + (random.random() * 15)  # Simular la lectura de temperatura
+                if not isinstance(t, (int, float)):
+                    raise ValueError("El valor de temperatura no es numérico.")
+                data = (timestamp, round(t,2))  # Crear una tupla (timestamp, temperatura)
+                self.notify_observers(data)  # Notificar a los observadores con los datos
+            except ValueError as e:
+                print("Error en la lectura de temperatura:", e)
             await asyncio.sleep(5)  # Esperar 5 segundos para la siguiente lectura
 
 # Define la clase Sistema IoT
@@ -160,10 +165,13 @@ class CalcularEstadisticosHandler(TemperatureHandler):
         fecha_hora_hace_un_min = dt.datetime.now() - dt.timedelta(minutes=1)
         if dt.datetime.strptime(data[0], '%Y-%m-%d %H:%M:%S') > fecha_hora_hace_un_min:
             self.temperaturas_recientes.append(data[1])
-        if len(self.temperaturas_recientes)>12:
-            del(self.temperaturas_recientes[0])        
-        estadisticos = ContextoCalculoEstadisticos(self.strategy).calculo_estadisticos(self.temperaturas_recientes)
-        print(f'El estadístico elegido ({self.strategy.nombre}) de los últimos 60 segundos vale: {estadisticos}')
+        if len(self.temperaturas_recientes) > 12:
+            del(self.temperaturas_recientes[0])
+        try:
+            estadisticos = ContextoCalculoEstadisticos(self.strategy).calculo_estadisticos(self.temperaturas_recientes)
+            print(f'El estadístico elegido ({self.strategy.nombre}) de los últimos 60 segundos vale: {estadisticos}')
+        except ValueError as e:
+            print("Error al calcular estadísticas:", e)
         if self.successor:
             self.successor.handle_request(data)
 
@@ -176,8 +184,13 @@ class ComprobarUmbralHandler(TemperatureHandler):
     def handle_request(self, data):
         timestamp, temperature = data
         umbral = 30  # Se establece el umbral a 30ºC
-        if temperature > umbral:
-            print(f"Temperatura ({temperature}) por encima del umbral ({umbral})")
+        if not isinstance(temperature, (int, float)):
+            raise ValueError("El valor de temperatura no es numérico.")
+        try:
+            if temperature > umbral:
+                print(f"Temperatura ({temperature}) por encima del umbral ({umbral})")
+        except ValueError as e:
+            print("Error al comprobar el umbral de temperatura:", e)
         if self.successor:
             self.successor.handle_request(data)
 
@@ -192,14 +205,18 @@ class AumentoTemperaturaHandler(TemperatureHandler):
         fecha_hora_hace_30_seg = dt.datetime.now() - dt.timedelta(seconds=30)
         if dt.datetime.strptime(data[0], '%Y-%m-%d %H:%M:%S') > fecha_hora_hace_30_seg:
             self.temperaturas_recientes.append(data[1])
-        if len(self.temperaturas_recientes)>6:
+        if len(self.temperaturas_recientes) > 6:
             del(self.temperaturas_recientes[0])
         cambio_temperatura = sum(self.temperaturas_recientes[i] - self.temperaturas_recientes[i + 1] for i in
                                  range(len(self.temperaturas_recientes) - 1))
-        if cambio_temperatura > 10:
-            print("La temperatura ha aumentado más de 10º en los últimos 30 segundos")
+        try:
+            if cambio_temperatura > 10:
+                print("La temperatura ha aumentado más de 10º en los últimos 30 segundos")
+        except ValueError as e:
+            print("Error al detectar el aumento de temperatura:", e)
 
 if __name__ == '__main__':
     manager = IoTManager.obtener_instancia()
     manager.ejecutar_simulacion()
+
 
