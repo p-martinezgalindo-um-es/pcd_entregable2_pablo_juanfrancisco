@@ -21,23 +21,11 @@ class Singleton:
 
 class IoTManager(Singleton):
     def __init__(self):
-        self.sensor_temperatura = TemperatureSensor()
-        self.estrategia = Media()
-        self.calcular_handler = CalcularEstadisticosHandler(self.estrategia)
-        self.umbral_handler = ComprobarUmbralHandler()
-        self.aumento_handler = AumentoTemperaturaHandler()
-        self.iot_system = IoTSystem(self.calcular_handler)
+        super().__init__()
 
-        # Configuramos la cadena de responsabilidad
-        self.calcular_handler.successor = self.umbral_handler
-        self.umbral_handler.successor = self.aumento_handler
-
-        # Agregamos el sistema IoT como observador del sensor de temperatura
-        self.sensor_temperatura.add_observer(self.iot_system)
-
-    def ejecutar_simulacion(self):
-        asyncio.run(self.sensor_temperatura.simulate_temperature_reading())
-
+    # Método ejecutar_simulacion definido fuera de la clase IoTManager
+    def ejecutar_simulacion(self, sensor_temperatura, calcular_handler, umbral_handler, aumento_handler, iot_system):
+        asyncio.run(sensor_temperatura.simulate_temperature_reading())
 
 # Define las clases Observable y Observer
 class Observable:
@@ -82,7 +70,7 @@ class IoTSystem(Observer):
 
     def update(self, data):
         self.lista_datos.append(data)
-        print("Nuevo dato de temperatura recibido:", data)
+        print("\nNuevo dato de temperatura recibido:", data)
         self.handler.handle_request(data)
         return self.lista_datos
 
@@ -155,9 +143,9 @@ class TemperatureHandler:
 
 # Primer Paso: Calcular estadísticas de temperatura
 class CalcularEstadisticosHandler(TemperatureHandler):
-    def __init__(self, strategy, successor=None):
+    def __init__(self, successor=None):
         super().__init__(successor)
-        self.strategy = strategy
+        self.estrategias = [Media(), DesvTipica(), Cuantiles(), MaxMin()]
         self.temperaturas_recientes = []
 
     def handle_request(self, data):
@@ -168,8 +156,16 @@ class CalcularEstadisticosHandler(TemperatureHandler):
         if len(self.temperaturas_recientes) > 12:
             del(self.temperaturas_recientes[0])
         try:
-            estadisticos = ContextoCalculoEstadisticos(self.strategy).calculo_estadisticos(self.temperaturas_recientes)
-            print(f'El estadístico elegido ({self.strategy.nombre}) de los últimos 60 segundos vale: {estadisticos}')
+            print('ESTADÍSTICOS:')
+            media = ContextoCalculoEstadisticos(Media()).calculo_estadisticos(self.temperaturas_recientes)
+            print(f'- La media de los últimos 60 segundos vale: {media}')
+            desvTipica = ContextoCalculoEstadisticos(DesvTipica()).calculo_estadisticos(self.temperaturas_recientes)
+            print(f'- La desviación típica de los últimos 60 segundos vale: {desvTipica}')
+            cuantiles = ContextoCalculoEstadisticos(Cuantiles()).calculo_estadisticos(self.temperaturas_recientes)
+            print(f'- Los cuantiles de los últimos 60 segundos son: {cuantiles}')
+            maxmin = ContextoCalculoEstadisticos(MaxMin()).calculo_estadisticos(self.temperaturas_recientes)
+            print(f'- El máximo y mínimo de los últimos 60 segundos vale: {maxmin}')
+            
         except ValueError as e:
             print("Error al calcular estadísticas:", e)
         if self.successor:
@@ -179,7 +175,7 @@ class CalcularEstadisticosHandler(TemperatureHandler):
 # Segundo Paso: Comprobar el umbral de temperatura
 class ComprobarUmbralHandler(TemperatureHandler):
     def __init__(self, successor=None):
-        pass
+        super().__init__(successor)
 
     def handle_request(self, data):
         timestamp, temperature = data
@@ -216,7 +212,22 @@ class AumentoTemperaturaHandler(TemperatureHandler):
             print("Error al detectar el aumento de temperatura:", e)
 
 if __name__ == '__main__':
-    manager = IoTManager.obtener_instancia()
-    manager.ejecutar_simulacion()
+    sensor_temperatura = TemperatureSensor()
+    calcular_handler = CalcularEstadisticosHandler()
+    umbral_handler = ComprobarUmbralHandler()
+    aumento_handler = AumentoTemperaturaHandler()
+    iot_system = IoTSystem(calcular_handler)
 
+    # Configuramos la cadena de responsabilidad
+    calcular_handler.successor = umbral_handler
+    umbral_handler.successor = aumento_handler
+
+    # Agregamos el sistema IoT como observador del sensor de temperatura
+    sensor_temperatura.add_observer(iot_system)
+
+     # Obtenemos la instancia de IoTManager
+    manager = IoTManager.obtener_instancia()
+
+    # Llamamos al método ejecutar_simulacion desde la instancia de IoTManager
+    manager.ejecutar_simulacion(sensor_temperatura, calcular_handler, umbral_handler, aumento_handler, iot_system)
 
